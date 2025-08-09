@@ -2,10 +2,13 @@
 
 set -e
 
-. .venv/bin/activate
+code_home=${0%/*}
 
-path=${0%/*}
-env_path="${path}/../.env"
+venv=${code_home}/../.venv
+
+. ${venv}/bin/activate
+
+env_path="${code_home}/../.env"
 
 if [ -f $env_path ]; then
     . ${env_path}
