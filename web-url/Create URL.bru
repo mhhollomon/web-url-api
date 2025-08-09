@@ -1,0 +1,19 @@
+meta {
+  name: Create URL
+  type: http
+  seq: 3
+}
+
+post {
+  url: http://localhost:5000/urls
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "url" : "http:/example.com/test",
+    "tags" : [ "tag1", "tag2"],
+    "description" : "cool stuff here!"
+  }
+}

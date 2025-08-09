@@ -1,0 +1,7 @@
+flask
+sqlalchemy
+werkzeug
+pylint
+python-dotenv
+Flask-CORS
+waitress
