@@ -154,4 +154,8 @@ def get_tags():
 if __name__ == "__main__":
     with app.app_context():
         Base.metadata.create_all(engine)
-    app.run(debug=True)
+    if os.getenv("FLASK_ENV") == "production":
+        from waitress import serve
+        serve(app, listen=os.getenv("WAITRESS_LISTEN"))
+    else :
+        app.run(debug=True)
