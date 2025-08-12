@@ -5,7 +5,7 @@ from sqlalchemy import ForeignKey, create_engine, select, func
 from sqlalchemy.orm import DeclarativeBase, MappedAsDataclass, Session
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from dotenv import load_dotenv
-from typing import List
+from typing import Any, Dict, List
 import os
 
 class Base(MappedAsDataclass, DeclarativeBase):
@@ -154,8 +154,26 @@ def get_tags():
 if __name__ == "__main__":
     with app.app_context():
         Base.metadata.create_all(engine)
+
+    options : Dict[str, Any] = {}
+
+    prefix : str | None = os.getenv("WAITRESS_PREFIX")
+
+    if prefix:
+        options["url_prefix"] = prefix
+
+    listen = os.getenv("WAITRESS_LISTEN")
+
+    if listen:
+        if listen.startswith("/"):
+            options["unix_socket"] = listen
+        else :
+            options["listen"] = listen
+
+    print(f"startup options = {options}")
+
     if os.getenv("FLASK_ENV") == "production":
         from waitress import serve
-        serve(app, listen=os.getenv("WAITRESS_LISTEN"))
+        serve(app, **options)
     else :
         app.run(debug=True)
