@@ -8,6 +8,6 @@ venv=${code_home}/../.venv
 
 . ${venv}/bin/activate
 
-# siwtch groups before running so the
+# switch groups before running so the
 # unix socket has the correct group.
-sg rproxy python ${code_home}/../app.py
+sg rproxy "python ${code_home}/../app.py"
