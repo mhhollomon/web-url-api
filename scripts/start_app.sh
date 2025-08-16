@@ -4,10 +4,10 @@ set -e
 
 code_home=${0%/*}
 
-newgrp rproxy
-
 venv=${code_home}/../.venv
 
 . ${venv}/bin/activate
 
-python ${code_home}/../app.py
+# siwtch groups before running so the
+# unix socket has the correct group.
+sg rproxy python ${code_home}/../app.py
