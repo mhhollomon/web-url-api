@@ -167,7 +167,7 @@ if __name__ == "__main__":
     if listen:
         if listen.startswith("/"):
             options["unix_socket"] = listen
-            options["unix_socket_perms"] = '550'
+            options["unix_socket_perms"] = '660'
         else :
             options["listen"] = listen
 
