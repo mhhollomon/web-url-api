@@ -95,6 +95,24 @@ def get_tags():
             fake_id += 1
         return jsonify(data)
 
+@app.route("/delete", methods=["POST"])
+@cross_origin()
+def delete_bookmark():
+    data = request.json
+    if not data:
+        return jsonify({"error": "Missing required fields"}), 400
+    
+    bookmark_id = data.get("id")
+    stmt = select(Bookmark).where(Bookmark.bid==bookmark_id).limit(1)
+    with Session(engine) as session:
+        result = session.execute(stmt)
+        url = result.scalars().one_or_none()
+        if not url:
+            return jsonify({"error": "Bookmark not found"}), 404
+        session.delete(url)
+        session.commit()
+        return jsonify({"message": "URL deleted"})
+
 # @app.route("/urls", methods=["POST"])
 # def create_url():
 #     if not request.is_json:
@@ -141,14 +159,6 @@ def get_tags():
 #                     "description": new_url.description, 
 #                     "tags": [t.name for t in url.tags]})
 
-# @app.route("/urls/<int:url_id>", methods=["DELETE"])
-# def delete_url(url_id):
-#     url = URL.query.get(url_id)
-#     if not url:
-#         return jsonify({"error": "URL not found"}), 404
-#     db.session.delete(url)
-#     db.session.commit()
-#     return jsonify({"message": "URL deleted"})
 
 
 if __name__ == "__main__":
