@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import cross_origin
 from datetime import datetime, timezone
-from sqlalchemy import ForeignKey, create_engine, select, func
+from sqlalchemy import ForeignKey, create_engine, select, func, delete
 from sqlalchemy.orm import DeclarativeBase, MappedAsDataclass, Session
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from dotenv import load_dotenv
@@ -102,6 +102,10 @@ def delete_bookmark():
     if not data:
         return jsonify({"error": "Missing required fields"}), 400
     
+    secret = data.get("secret")
+    if secret != CONFIG["SECRET_KEY"]:
+        return jsonify({"error": "Unauthorized"}), 401
+    
     bookmark_id = data.get("id")
     stmt = select(Bookmark).where(Bookmark.bid==bookmark_id).limit(1)
     with Session(engine) as session:
@@ -109,6 +113,8 @@ def delete_bookmark():
         url = result.scalars().one_or_none()
         if not url:
             return jsonify({"error": "Bookmark not found"}), 404
+        stmt = delete(Tag).where(Tag.bkm_id==bookmark_id)
+        session.execute(stmt)
         session.delete(url)
         session.commit()
         return jsonify({"message": "URL deleted"})
