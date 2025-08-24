@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import cross_origin
 from datetime import datetime, timezone
-from sqlalchemy import ForeignKey, create_engine, select, func, delete
+from sqlalchemy import ForeignKey, Integer, create_engine, select, func, delete, update
 from sqlalchemy.orm import DeclarativeBase, MappedAsDataclass, Session
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from dotenv import load_dotenv
@@ -24,10 +24,15 @@ app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite://{CONFIG['DB_NAME']}"
 
 engine = create_engine(app.config["SQLALCHEMY_DATABASE_URI"], echo=True)
 
+##----------------------------
+## Tables
+##----------------------------
+
 class Bookmark(Base):
     __tablename__ = "bookmark"
+    __table_args__ = {"sqlite_autoincrement": True}
 
-    bid  : Mapped[int] = mapped_column(primary_key=True)
+    bid  : Mapped[int] = mapped_column(Integer, primary_key=True)
     url  : Mapped[str]
     title : Mapped[str]
     description : Mapped[str]
@@ -42,14 +47,22 @@ class Bookmark(Base):
 
 class Tag(Base):
     __tablename__ = "tag"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     tid    : Mapped[int] = mapped_column(primary_key=True)
     name   : Mapped[str]
     bkm_id : Mapped[int] = mapped_column(ForeignKey("bookmark.bid"), 
                                          nullable=False, 
                                         )
+
+##--------------------------------------
 ##--------------------------------------
 ## Routes
+##--------------------------------------
+##--------------------------------------
+
+##--------------------------------------
+## Get all Bookmarks (with tags)
 ##--------------------------------------
 @app.route("/bookmarks", methods=["GET"])
 @cross_origin()
@@ -80,6 +93,10 @@ def get_urls():
                         "title": u.title,
                         "tags": [t.name for t in u.tags]
                         } for u in urls])
+
+##--------------------------------------
+## Get all Tags (with count)
+##--------------------------------------
 @app.route("/tags", methods=["GET"])
 @cross_origin()
 def get_tags():
@@ -91,9 +108,22 @@ def get_tags():
         fake_id : int = 1
         data = []
         for t in tags:
+            # The fake_id is to help out React or whatever front end library
+            # is going to display them. I guess I could just use the name itself
+            # as the id. *shrug*.
+            # At some point I may pull out tags as a "lexicon" or something.
             data.append({"count": t.count, "name": t.name, "id" : fake_id})
             fake_id += 1
         return jsonify(data)
+
+##--------------------------------------
+## Delete a bookmark using id.
+##
+## POST data = {
+##   "id" : 1,
+##   "secret" : "secret"
+## }
+##--------------------------------------
 
 @app.route("/delete", methods=["POST"])
 @cross_origin()
@@ -118,52 +148,118 @@ def delete_bookmark():
         session.delete(url)
         session.commit()
         return jsonify({"message": "URL deleted"})
+    
+##--------------------------------------
+## Create a bookmark.
+##
+## If a bookmark already exists with the URL, an error is returned.
+##
+## POST data = {
+##   "id" : -2, -- actually ignored
+##   "url" : "http:/example.com/test",
+##   "title" : "Example",
+##   "description" : "cool stuff here!",
+##   "tags" : ["tag1", "tag2"],
+##   "secret" : "secret"
+## }
+##--------------------------------------
 
-# @app.route("/urls", methods=["POST"])
-# def create_url():
-#     if not request.is_json:
-#         return jsonify({"error": "Invalid request"}), 400
-#     data = request.get_json()
-#     url = data.get("url")
-#     tags = data.get("tags")
-#     description = data.get("description")
-#     if not url or not tags:
-#         return jsonify({"error": "Missing required fields"}), 400
-#     new_url = URL(url=url, desc=description) # type: ignore
-#     for tag in tags:
-#         new_tag = Tag(name=tag, url=new_url) # type: ignore
-#         db.session.add(new_tag)
-#     db.session.add(new_url)
-#     db.session.commit()
-#     return jsonify({"id": new_url.id, "url": new_url.url, 
-#                     "date_created": new_url.date_created.isoformat(), 
-#                     "description": new_url.desc, 
-#                     "tags": tags}), 201
+@app.route("/create", methods=["POST"])
+@cross_origin()
+def create_bookmark():
+    data = request.json
+    if not data:
+        return jsonify({"error": "Missing required fields"}), 400
+    
+    secret = data.get("secret")
+    if secret != CONFIG["SECRET_KEY"]:
+        return jsonify({"error": "Unauthorized"}), 401
 
-# @app.route("/urls/<int:url_id>", methods=["PUT"])
-# def update_url(url_id):
-#     url = URL.query.get(url_id)
-#     if not url:
-#         return jsonify({"error": "URL not found"}), 404
-#     if not request.is_json:
-#         return jsonify({"error": "Invalid request"}), 400
-#     data = request.get_json()
-#     new_url = data.get("url")
-#     new_tags = data.get("tags")
-#     new_desc = data.get("description")
-#     if new_url:
-#         url.url = new_url
-#     if new_desc:
-#         url.description = new_desc
-#     if new_tags:
-#         url.tags = []
-#         for tag in new_tags:
-#             new_tag = Tag(name=tag, url=url) # type: ignore
-#             db.session.add(new_tag)
-#     db.session.commit()
-#     return jsonify({"id": url.id, "url": url.url, "date_created": url.date_created.isoformat(), 
-#                     "description": new_url.description, 
-#                     "tags": [t.name for t in url.tags]})
+    url = data.get("url")
+    title = data.get("title")
+    description = data.get("description")
+    tags = data.get("tags")
+    if not url:
+        return jsonify({"error": "Missing required fields"}), 400
+    with Session(engine) as session:
+        test_url = session.execute(select(Bookmark).where(Bookmark.url==url)).scalars().one_or_none()
+        if test_url:
+            return jsonify({"error": "URL already exists"}), 400
+        new_url = Bookmark(bid=None, url=url, title=title, description=description, tags=[]) # type: ignore
+        session.add(new_url)
+        new_url : Bookmark = session.execute(select(Bookmark).where(Bookmark.url==url)).scalars().one()
+        for tag in tags:
+            new_tag = Tag(tid=None, name=tag, bkm_id=new_url.bid) # type: ignore
+            session.add(new_tag)
+        session.commit()
+
+        return jsonify({"id": new_url.bid, 
+                    "url": new_url.url,
+                    "title": new_url.title,
+                    "date_created": new_url.date_created.isoformat(), 
+                    "description": new_url.description, 
+                    "tags": tags}), 201
+
+##--------------------------------------
+## Update an existing a bookmark.
+##
+## If the URL is changed, the system checks to see if
+## a bookmark exists with the new URL. If so, it will return an error.
+##
+## POST data = {
+##   "id" : 3,
+##   "url" : "http:/example.com/test",
+##   "title" : "Example",
+##   "description" : "cool stuff here!",
+##   "tags" : ["tag1", "tag2"],
+##   "secret" : "secret"
+## }
+##--------------------------------------
+
+@app.route("/update", methods=["POST"])
+@cross_origin()
+def edit_bookmark():
+    data = request.json
+    if not data:
+        return jsonify({"error": "Missing required fields"}), 400
+    
+    secret = data.get("secret")
+    if secret != CONFIG["SECRET_KEY"]:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    bookmark_id : str = str(data.get("id") or "-2")
+    print(f'bookmark_id: {bookmark_id}')
+    url = data.get("url")
+    title = data.get("title")
+    description = data.get("description")
+    tags = data.get("tags")
+    if not url:
+        return jsonify({"error": "Missing required fields"}), 400
+    with Session(engine) as session:
+        test_url = session.execute(select(Bookmark).where(Bookmark.url==url)).scalars().one_or_none()
+        print(f'test_url: {test_url}')
+        if test_url and test_url.bid != int(bookmark_id):
+            return jsonify({"error": "URL already exists"}), 400
+        stmt = update(Bookmark).where(Bookmark.bid==bookmark_id).values(url=url, title=title, description=description)
+        session.execute(stmt)
+        stmt = delete(Tag).where((Tag.bkm_id==bookmark_id) & (~ Tag.name.in_(tags))).execution_options(is_delete_using=True)
+        session.execute(stmt)
+        stmt = select(Tag.name).where(Tag.bkm_id==bookmark_id)
+        old_tags = session.execute(stmt).scalars().all()
+        for tag in tags:
+            if tag in old_tags:
+                continue
+            new_tag = Tag(tid=None, name=tag, bkm_id=bookmark_id) # type: ignore
+            session.add(new_tag)
+        session.commit()
+        new_url : Bookmark = session.execute(select(Bookmark).where(Bookmark.bid==bookmark_id)).scalars().one()
+
+        return jsonify({"id": new_url.bid, 
+                    "url": new_url.url,
+                    "title": new_url.title,
+                    "date_created": new_url.date_created.isoformat(), 
+                    "description": new_url.description, 
+                    "tags": tags}), 200
 
 
 
@@ -171,26 +267,34 @@ if __name__ == "__main__":
     with app.app_context():
         Base.metadata.create_all(engine)
 
+    is_prod = os.getenv("FLASK_ENV") == "production"
+
     options : Dict[str, Any] = {}
 
     prefix : str | None = os.getenv("WAITRESS_PREFIX")
 
-    if prefix:
+    if is_prod and prefix :
         options["url_prefix"] = prefix
 
     listen = os.getenv("WAITRESS_LISTEN")
 
     if listen:
-        if listen.startswith("/"):
-            options["unix_socket"] = listen
-            options["unix_socket_perms"] = '660'
+        if is_prod:
+            if listen.startswith("/"):
+                options["unix_socket"] = listen
+                options["unix_socket_perms"] = '660'
+            else :
+                options["listen"] = listen
         else :
-            options["listen"] = listen
-
+            # app.run() doesn't support listen, so split
+            # into host and port.
+            (host, port) = listen.split(":")
+            options["host"] = host
+            options["port"] = port
     print(f"startup options = {options}")
 
-    if os.getenv("FLASK_ENV") == "production":
+    if is_prod:
         from waitress import serve
         serve(app, **options)
     else :
-        app.run(debug=True)
+        app.run(debug=True, **options)
